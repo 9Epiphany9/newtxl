@@ -1,5 +1,8 @@
 package com.txl.dean;
 
+import java.util.HashSet;
+import java.util.Set;
+
 public class personalInfo {
     private String name;            // 姓名
     private String telephone;       // 电话
@@ -10,13 +13,16 @@ public class personalInfo {
     private String company;        // 工作单位
     private String address;        // 家庭地址
     private String zipCode;        // 邮编
-    private String group;          // 所属组
+    private Set<String> groups = new HashSet<>();
     private String notes;          // 备注信息
 
     public personalInfo() {
+        this.groups = new HashSet<>();
+        this.groups.add("未分组");
     }
 
     public personalInfo(String name) {
+        this();
         this.name = name;
     }
 
@@ -48,8 +54,31 @@ public class personalInfo {
     public String getZipCode() { return zipCode; }
     public void setZipCode(String zipCode) { this.zipCode = zipCode; }
 
-    public String getGroup() { return group; }
-    public void setGroup(String group) { this.group = group; }
+    public Set<String> getGroups() { 
+        return groups; 
+    }
+
+    public void setGroups(Set<String> groups) {
+        this.groups = groups;
+        if (this.groups.isEmpty()) {
+            this.groups.add("未分组");
+        }
+    }
+
+    public void addGroup(String group) {
+        if (group != null && !group.trim().isEmpty()) {
+            this.groups.add(group.trim());
+        }
+    }
+
+    public void removeGroup(String group) {
+        if (group != null) {
+            this.groups.remove(group.trim());
+            if (this.groups.isEmpty()) {
+                this.groups.add("未分组");
+            }
+        }
+    }
 
     public String getNotes() { return notes; }
     public void setNotes(String notes) { this.notes = notes; }
@@ -65,7 +94,7 @@ public class personalInfo {
                "单位: " + company + "\n" +
                "地址: " + address + "\n" +
                "邮编: " + zipCode + "\n" +
-               "分组: " + group + "\n" +
+               "分组: " + String.join(", ", groups) + "\n" +
                "备注: " + notes;
     }
 }

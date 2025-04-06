@@ -57,7 +57,7 @@ public class AddressBookApp extends JFrame {
             for (personalInfo contact : contacts) {
                 String name = contact.getName();
                 contactListModel.addElement(name);
-                contactGroupMap.put(name, contact.getGroup());
+                contactGroupMap.put(name, String.join(", ", contact.getGroups()));
             }
             updateGroupMembersList();
             filterContacts();
@@ -187,11 +187,13 @@ public class AddressBookApp extends JFrame {
         groupMembersModel = new DefaultListModel<>();
         groupMembersList = new JList<>(groupMembersModel);
         styleList(groupMembersList);
+        groupMembersList.setSelectionMode(ListSelectionModel.MULTIPLE_INTERVAL_SELECTION); // 允许多选
+
+        // 移除原有的鼠标监听器，替换为以下实现
         groupMembersList.addMouseListener(new MouseAdapter() {
             @Override
             public void mouseClicked(MouseEvent e) {
-                if (e.getClickCount() == 2) {
-                    clearSelectionsExcept(groupMembersList);
+                if (e.getClickCount() == 2) { // 仅双击时跳转
                     String selectedName = groupMembersList.getSelectedValue();
                     if (selectedName != null && !selectedName.startsWith("姓名")) {
                         showContactInfo(selectedName.split(" ")[0]);
@@ -199,22 +201,11 @@ public class AddressBookApp extends JFrame {
                 }
             }
         });
+
         groupMembersList.addListSelectionListener(e -> {
             if (!e.getValueIsAdjusting()) {
-                String selectedName = groupMembersList.getSelectedValue();
-                if (selectedName != null && !selectedName.startsWith("姓名")) {
-                    clearSelectionsExcept(groupMembersList);
-                    String name = selectedName.split(" ")[0];
-                    for (int i = 0; i < contactListModel.size(); i++) {
-                        if (contactListModel.get(i).equals(name)) {
-                            contactList.setSelectedIndex(i);
-                            break;
-                        }
-                    }
-                    enableEditButton(true);
-                } else {
-                    enableEditButton(false);
-                }
+                // 不再自动清除其他选择
+                enableEditButton(!groupMembersList.isSelectionEmpty());
             }
         });
 
@@ -270,14 +261,10 @@ public class AddressBookApp extends JFrame {
 
     private void loadGroupList() {
         Set<String> groups = new HashSet<>();
-        groups.add("未分组"); // 默认分组
-
         try {
             List<personalInfo> contacts = personalDao.loadAll();
             for (personalInfo contact : contacts) {
-                if (contact.getGroup() != null && !contact.getGroup().isEmpty()) {
-                    groups.add(contact.getGroup());
-                }
+                groups.addAll(contact.getGroups()); // 替换原 contact.getGroup()
             }
         } catch (IOException e) {
             System.err.println("加载分组失败: " + e.getMessage());
@@ -385,10 +372,10 @@ public class AddressBookApp extends JFrame {
         }
 
         int confirm = JOptionPane.showConfirmDialog(
-                this,
-                "确定要删除分组 \"" + selectedGroup + "\" 吗?\n(该分组的联系人将被移动到\"未分组\")",
-                "确认删除",
-                JOptionPane.YES_NO_OPTION
+            this,
+            "确定要删除分组 \"" + selectedGroup + "\" 吗?\n(该分组的联系人将被移动到\"未分组\")",
+            "确认删除",
+            JOptionPane.YES_NO_OPTION
         );
 
         if (confirm == JOptionPane.YES_OPTION) {
@@ -398,9 +385,9 @@ public class AddressBookApp extends JFrame {
                 List<personalInfo> toUpdate = new ArrayList<>();
 
                 for (personalInfo contact : contacts) {
-                    if (selectedGroup.equals(contact.getGroup())) {
-                        // 2. 将这些联系人的分组设置为"未分组"
-                        contact.setGroup("未分组");
+                    if (contact.getGroups().contains(selectedGroup)) {
+                        // 2. 将这些联系人的分组设置为"未分组"，移除其他分组
+                        contact.setGroups(new HashSet<>(Arrays.asList("未分组")));
                         toUpdate.add(contact);
                     }
                 }
@@ -417,18 +404,18 @@ public class AddressBookApp extends JFrame {
                 loadContacts();
 
                 JOptionPane.showMessageDialog(
-                        this,
-                        "分组 \"" + selectedGroup + "\" 已删除!\n" +
-                                toUpdate.size() + " 个联系人已被移动到\"未分组\"",
-                        "成功",
-                        JOptionPane.INFORMATION_MESSAGE
+                    this,
+                    "分组 \"" + selectedGroup + "\" 已删除!\n" +
+                            toUpdate.size() + " 个联系人已被移动到\"未分组\"",
+                    "成功",
+                    JOptionPane.INFORMATION_MESSAGE
                 );
             } catch (IOException ex) {
                 JOptionPane.showMessageDialog(
-                        this,
-                        "删除分组失败: " + ex.getMessage(),
-                        "错误",
-                        JOptionPane.ERROR_MESSAGE
+                    this,
+                    "删除分组失败: " + ex.getMessage(),
+                    "错误",
+                    JOptionPane.ERROR_MESSAGE
                 );
             }
         }
@@ -647,7 +634,7 @@ public class AddressBookApp extends JFrame {
             contact.setCompany(companyField.getText().trim());
             contact.setAddress(addressField.getText().trim());
             contact.setZipCode(zipCodeField.getText().trim());
-            contact.setGroup((String) groupField.getSelectedItem());
+            contact.setGroups(new HashSet<>(Arrays.asList((String) groupField.getSelectedItem())));
             contact.setNotes(notesField.getText().trim());
 
             try {
@@ -690,11 +677,9 @@ public class AddressBookApp extends JFrame {
         JTextField zipCodeField = new JTextField(originalContact.getZipCode());
 
         // 使用动态分组列表
-        JComboBox<String> groupField = new JComboBox<>();
-        for (int i = 0; i < groupListModel.size(); i++) {
-            groupField.addItem(groupListModel.getElementAt(i));
-        }
-        groupField.setSelectedItem(originalContact.getGroup());
+        JList<String> groupField = new JList<>(groupListModel);
+        groupField.setSelectionMode(ListSelectionModel.MULTIPLE_INTERVAL_SELECTION);
+        groupField.setSelectedIndices(getSelectedIndicesForGroups(originalContact.getGroups()));
 
         JTextField notesField = new JTextField(originalContact.getNotes());
 
@@ -719,21 +704,21 @@ public class AddressBookApp extends JFrame {
         addFormField(formPanel, "单位:", companyField);
         addFormField(formPanel, "地址:", addressField);
         addFormField(formPanel, "邮编:", zipCodeField);
-        addFormField(formPanel, "分组:", groupField);
+        addFormField(formPanel, "分组:", new JScrollPane(groupField)); // 使用JScrollPane包裹JList
         addFormField(formPanel, "备注:", notesField);
 
         panel.add(formPanel, BorderLayout.CENTER);
 
-        // 显示对话框
-        int result = JOptionPane.showConfirmDialog(
-                this,
-                panel,
-                "编辑联系人",
-                JOptionPane.OK_CANCEL_OPTION,
-                JOptionPane.PLAIN_MESSAGE);
+        // 创建对话框
+        JDialog dialog = new JDialog(this, "编辑联系人", true);
+        dialog.setContentPane(panel);
+        dialog.setSize(400, 500); // 设置对话框大小
+        dialog.setLocationRelativeTo(this);
+        dialog.setDefaultCloseOperation(JDialog.DISPOSE_ON_CLOSE);
 
-        // 处理用户输入
-        if (result == JOptionPane.OK_OPTION) {
+        // 确认按钮
+        JButton okButton = new JButton("确定");
+        okButton.addActionListener(e -> {
             String name = nameField.getText().trim();
             if (name.isEmpty()) {
                 JOptionPane.showMessageDialog(this, "姓名不能为空！");
@@ -749,7 +734,14 @@ public class AddressBookApp extends JFrame {
             contact.setCompany(companyField.getText().trim());
             contact.setAddress(addressField.getText().trim());
             contact.setZipCode(zipCodeField.getText().trim());
-            contact.setGroup((String) groupField.getSelectedItem());
+            
+            // 处理分组更新 - 保留原有分组
+            Set<String> newGroups = new HashSet<>(groupField.getSelectedValuesList());
+            if (newGroups.isEmpty()) {
+                newGroups.add("未分组"); // 确保至少有一个分组
+            }
+            contact.setGroups(newGroups);
+            
             contact.setNotes(notesField.getText().trim());
 
             try {
@@ -757,13 +749,41 @@ public class AddressBookApp extends JFrame {
                 loadContacts();
                 loadGroupList(); // 刷新分组列表
                 JOptionPane.showMessageDialog(this, "联系人编辑成功！");
+                dialog.dispose();
             } catch (IOException ex) {
                 JOptionPane.showMessageDialog(this,
                         "保存联系人失败: " + ex.getMessage(),
                         "错误",
                         JOptionPane.ERROR_MESSAGE);
             }
+        });
+
+        // 取消按钮
+        JButton cancelButton = new JButton("取消");
+        cancelButton.addActionListener(e -> dialog.dispose());
+
+        // 按钮面板
+        JPanel buttonPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT));
+        buttonPanel.add(okButton);
+        buttonPanel.add(cancelButton);
+        panel.add(buttonPanel, BorderLayout.SOUTH);
+
+        // 显示对话框
+        dialog.setVisible(true);
+    }
+
+    // 新增方法：根据分组名称获取对应的索引
+    private int[] getSelectedIndicesForGroups(Set<String> groups) {
+        List<Integer> indices = new ArrayList<>();
+        for (String group : groups) {
+            for (int i = 0; i < groupListModel.size(); i++) {
+                if (groupListModel.getElementAt(i).equals(group)) {
+                    indices.add(i);
+                    break;
+                }
+            }
         }
+        return indices.stream().mapToInt(Integer::intValue).toArray();
     }
 
     private void addFormField(JPanel panel, String label, JComponent field) {
@@ -853,7 +873,7 @@ public class AddressBookApp extends JFrame {
             // 添加组成员
             List<personalInfo> contacts = personalDao.loadAll();
             for (personalInfo contact : contacts) {
-                if (currentSelectedGroup.equals(contact.getGroup())) {
+                if (contact.getGroups().contains(currentSelectedGroup)) {
                     String displayText = String.format("%-20s %-15s %-30s",
                             contact.getName(),
                             contact.getTelephone() != null ? contact.getTelephone() : "无",
@@ -972,50 +992,154 @@ public class AddressBookApp extends JFrame {
             return;
         }
 
-        JComboBox<String> groupComboBox = new JComboBox<>();
-        for (int i = 0; i < groupListModel.size(); i++) {
-            groupComboBox.addItem(groupListModel.getElementAt(i));
+        // 获取第一个选中联系人的当前分组（用于默认选中）
+        Set<String> currentGroups = new HashSet<>();
+        try {
+            List<personalInfo> contacts = personalDao.loadAll();
+            for (personalInfo contact : contacts) {
+                if (contact.getName().equals(selectedNames.get(0))) {
+                    currentGroups = contact.getGroups();
+                    break;
+                }
+            }
+        } catch (IOException ex) {
+            JOptionPane.showMessageDialog(this,
+                    "加载联系人信息失败: " + ex.getMessage(),
+                    "错误",
+                    JOptionPane.ERROR_MESSAGE);
+            return;
         }
-        styleComboBox(groupComboBox);
 
-        int result = JOptionPane.showConfirmDialog(
-                this,
-                groupComboBox,
-                "选择目标分组",
-                JOptionPane.OK_CANCEL_OPTION,
-                JOptionPane.PLAIN_MESSAGE);
+        // 创建对话框面板
+        JPanel panel = new JPanel(new BorderLayout(10, 10));
+        panel.setBorder(BorderFactory.createEmptyBorder(15, 15, 15, 15));
 
-        if (result == JOptionPane.OK_OPTION) {
-            String targetGroup = (String) groupComboBox.getSelectedItem();
-            if (targetGroup != null) {
-                moveContactsToGroup(selectedNames, targetGroup);
+        // 添加说明标签
+        JLabel label = new JLabel("<html><b>移动到分组</b><br>将删除原有分组，只保留新选中的分组:</html>");
+        label.setFont(new Font("微软雅黑", Font.PLAIN, 13));
+        panel.add(label, BorderLayout.NORTH);
+
+        // 创建分组选择列表
+        JList<String> groupSelectionList = new JList<>(groupListModel);
+        groupSelectionList.setSelectionMode(ListSelectionModel.MULTIPLE_INTERVAL_SELECTION);
+
+        // 设置默认选中当前分组
+        List<Integer> selectedIndices = new ArrayList<>();
+        for (int i = 0; i < groupListModel.size(); i++) {
+            if (currentGroups.contains(groupListModel.getElementAt(i))) {
+                selectedIndices.add(i);
             }
         }
-    }
+        int[] indicesArray = selectedIndices.stream().mapToInt(i -> i).toArray();
+        groupSelectionList.setSelectedIndices(indicesArray);
 
-    private void moveContactsToGroup(List<String> names, String targetGroup) {
+        // 美化列表外观
+        groupSelectionList.setCellRenderer(new DefaultListCellRenderer() {
+            @Override
+            public Component getListCellRendererComponent(JList<?> list, Object value,
+                                                          int index, boolean isSelected, boolean cellHasFocus) {
+                super.getListCellRendererComponent(list, value, index, isSelected, cellHasFocus);
+                setFont(new Font("微软雅黑", Font.PLAIN, 13));
+                setBorder(BorderFactory.createEmptyBorder(5, 8, 5, 8));
+                if (isSelected) {
+                    setBackground(new Color(70, 130, 180));
+                    setForeground(Color.WHITE);
+                }
+                return this;
+            }
+        });
+
+        // 添加滚动面板
+        JScrollPane scrollPane = new JScrollPane(groupSelectionList);
+        styleScrollPane(scrollPane);
+        scrollPane.setPreferredSize(new Dimension(250, 150));
+        panel.add(scrollPane, BorderLayout.CENTER);
+
+        // 创建复选框 - 是否保留原有分组
+        JCheckBox keepOriginalCheckBox = new JCheckBox("保留原有分组（不删除原有分组）");
+        keepOriginalCheckBox.setFont(new Font("微软雅黑", Font.PLAIN, 12));
+        keepOriginalCheckBox.setSelected(false); // 默认不保留
+        panel.add(keepOriginalCheckBox, BorderLayout.SOUTH);
+
+        // 创建按钮面板
+        JPanel buttonPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT, 10, 5));
+        JButton okButton = createStyledButton("确定", new Color(60, 179, 113));
+        JButton cancelButton = createStyledButton("取消", new Color(205, 92, 92));
+
+        okButton.addActionListener(e -> {
+            List<String> selectedGroups = groupSelectionList.getSelectedValuesList();
+            if (selectedGroups.isEmpty()) {
+                JOptionPane.showMessageDialog(panel, "请至少选择一个分组！", "提示", JOptionPane.WARNING_MESSAGE);
+            } else {
+                // 根据复选框决定是替换还是添加分组
+                boolean replaceGroups = !keepOriginalCheckBox.isSelected();
+                updateContactGroups(selectedNames, selectedGroups, replaceGroups);
+                ((Window)SwingUtilities.getRoot(panel)).dispose();
+            }
+        });
+
+        cancelButton.addActionListener(e -> {
+            ((Window)SwingUtilities.getRoot(panel)).dispose();
+        });
+
+        buttonPanel.add(okButton);
+        buttonPanel.add(cancelButton);
+        panel.add(buttonPanel, BorderLayout.SOUTH);
+
+        // 创建并显示对话框
+        JDialog dialog = new JDialog(this, "移动到分组", true);
+        dialog.setContentPane(panel);
+        dialog.pack();
+        dialog.setLocationRelativeTo(this);
+        dialog.setVisible(true);
+    }
+    private void updateContactGroups(List<String> contactNames, List<String> newGroups, boolean replaceExisting) {
         try {
             List<personalInfo> contacts = personalDao.loadAll();
             List<personalInfo> toUpdate = new ArrayList<>();
 
             for (personalInfo contact : contacts) {
-                if (names.contains(contact.getName())) {
-                    contact.setGroup(targetGroup);
+                if (contactNames.contains(contact.getName())) {
+                    Set<String> updatedGroups;
+
+                    if (replaceExisting) {
+                        // 替换模式：完全用新分组替换原有分组
+                        updatedGroups = new HashSet<>(newGroups);
+
+                        // 确保至少有一个分组
+                        if (updatedGroups.isEmpty()) {
+                            updatedGroups.add("未分组");
+                        }
+                    } else {
+                        // 添加模式：保留原有分组并添加新分组
+                        updatedGroups = new HashSet<>(contact.getGroups());
+                        updatedGroups.addAll(newGroups);
+                    }
+
+                    // 更新联系人的分组
+                    contact.setGroups(updatedGroups);
                     toUpdate.add(contact);
                 }
             }
 
+            // 批量更新联系人
             for (personalInfo contact : toUpdate) {
                 personalDao.update(contact);
             }
 
+            // 刷新界面
             loadContacts();
-            updateGroupMembersList();
+            loadGroupList(); // 重新加载分组列表
+            updateGroupMembersList(); // 更新组成员列表
+
             JOptionPane.showMessageDialog(this,
-                    "成功将 " + toUpdate.size() + " 个联系人移动到分组: " + targetGroup);
+                    "成功更新 " + toUpdate.size() + " 个联系人的分组信息",
+                    "操作成功",
+                    JOptionPane.INFORMATION_MESSAGE);
+
         } catch (IOException ex) {
             JOptionPane.showMessageDialog(this,
-                    "移动联系人失败: " + ex.getMessage(),
+                    "更新分组失败: " + ex.getMessage(),
                     "错误",
                     JOptionPane.ERROR_MESSAGE);
         }
@@ -1029,13 +1153,42 @@ public class AddressBookApp extends JFrame {
         }
 
         int confirm = JOptionPane.showConfirmDialog(
-                this,
-                "确定要将选中的 " + selectedNames.size() + " 个联系人从当前分组移除吗？",
-                "确认移除",
-                JOptionPane.YES_NO_OPTION);
+            this,
+            "确定要将选中的 " + selectedNames.size() + " 个联系人从当前分组移除吗？",
+            "确认移除",
+            JOptionPane.YES_NO_OPTION);
 
         if (confirm == JOptionPane.YES_OPTION) {
-            moveContactsToGroup(selectedNames, "未分组");
+            try {
+                List<personalInfo> contacts = personalDao.loadAll();
+                List<personalInfo> toUpdate = new ArrayList<>();
+
+                for (personalInfo contact : contacts) {
+                    if (selectedNames.contains(contact.getName())) {
+                        // 从当前分组移除
+                        contact.removeGroup(currentSelectedGroup);
+                        // 确保至少保留在"未分组"中
+                        if (contact.getGroups().isEmpty()) {
+                            contact.addGroup("未分组");
+                        }
+                        toUpdate.add(contact);
+                    }
+                }
+
+                for (personalInfo contact : toUpdate) {
+                    personalDao.update(contact);
+                }
+
+                loadContacts();
+                updateGroupMembersList();
+                JOptionPane.showMessageDialog(this,
+                    "成功更新 " + toUpdate.size() + " 个联系人的分组信息");
+            } catch (IOException ex) {
+                JOptionPane.showMessageDialog(this,
+                    "更新分组失败: " + ex.getMessage(),
+                    "错误",
+                    JOptionPane.ERROR_MESSAGE);
+            }
         }
     }
 

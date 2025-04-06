@@ -5,7 +5,10 @@ import java.io.*;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.*;
 import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 
 public class PersonalDao {
     private static final String CSV_HEADER = "姓名,电话,邮箱,主页,生日,照片,单位,地址,邮编,分组,备注";
@@ -64,7 +67,7 @@ public class PersonalDao {
             escapeCsvField(info.getCompany()),
             escapeCsvField(info.getAddress()),
             escapeCsvField(info.getZipCode()),
-            escapeCsvField(info.getGroup()),
+            escapeCsvField(String.join(";", info.getGroups())), // 修改此行
             escapeCsvField(info.getNotes())
         );
 
@@ -124,6 +127,10 @@ public class PersonalDao {
         // 替换或保留原有联系人
         for (personalInfo contact : contacts) {
             if (contact.getName().equals(info.getName())) {
+                // 如果目标分组包含“未分组”，则移除所有其他分组
+                if (info.getGroups().contains("未分组")) {
+                    info.setGroups(new HashSet<>(Arrays.asList("未分组")));
+                }
                 // 添加更新后的联系人
                 lines.add(contactToCsvLine(info));
                 found = true;
@@ -167,7 +174,6 @@ public class PersonalDao {
         );
     }
 
-    // 将联系人对象转换为CSV行
     private String contactToCsvLine(personalInfo contact) {
         return String.format("%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s",
             escapeCsvField(contact.getName()),
@@ -179,18 +185,15 @@ public class PersonalDao {
             escapeCsvField(contact.getCompany()),
             escapeCsvField(contact.getAddress()),
             escapeCsvField(contact.getZipCode()),
-            escapeCsvField(contact.getGroup()),
+            escapeCsvField(String.join(";", contact.getGroups())), // 修改此行
             escapeCsvField(contact.getNotes())
         );
     }
 
-    // 从CSV行解析联系人对象
     private personalInfo parseContactFromCsvLine(String line) {
         try {
             List<String> fields = parseCSV(line);
-            if (fields.size() < 11) { // 更新为新的字段数量
-                return null; // 数据不完整
-            }
+            if (fields.size() < 11) return null;
 
             personalInfo contact = new personalInfo(fields.get(0));
             contact.setTelephone(fields.get(1));
@@ -201,7 +204,11 @@ public class PersonalDao {
             contact.setCompany(fields.get(6));
             contact.setAddress(fields.get(7));
             contact.setZipCode(fields.get(8));
-            contact.setGroup(fields.get(9));
+            
+            // 修改分组解析逻辑
+            Set<String> groups = new HashSet<>(Arrays.asList(fields.get(9).split(";")));
+            contact.setGroups(groups);
+            
             contact.setNotes(fields.get(10));
 
             return contact;
