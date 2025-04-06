@@ -257,6 +257,15 @@ public class AddressBookApp extends JFrame {
         // 添加到主面板
         mainPanel.add(leftPanel, BorderLayout.WEST);
         mainPanel.add(rightPanel, BorderLayout.CENTER);
+
+        JButton moveToGroupButton = createStyledButton("移动到分组", new Color(70, 130, 180));
+        JButton removeFromGroupButton = createStyledButton("从分组移除", new Color(205, 92, 92));
+
+        moveToGroupButton.addActionListener(e -> showMoveToGroupDialog());
+        removeFromGroupButton.addActionListener(e -> removeFromGroup());
+
+        buttonPanel.add(moveToGroupButton);
+        buttonPanel.add(removeFromGroupButton);
     }
 
     private void loadGroupList() {
@@ -472,7 +481,7 @@ public class AddressBookApp extends JFrame {
 
     // 样式化列表
     private void styleList(JList<?> list) {
-        list.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
+        list.setSelectionMode(ListSelectionModel.MULTIPLE_INTERVAL_SELECTION);
         list.setFont(new Font("微软雅黑", Font.PLAIN, 13));
         list.setBackground(new Color(250, 250, 255));
         list.setSelectionBackground(new Color(70, 130, 180));
@@ -802,13 +811,8 @@ public class AddressBookApp extends JFrame {
     }
 
     private String getSelectedContactName() {
-        if (contactList.getSelectedValue() != null) {
-            return contactList.getSelectedValue();
-        } else if (groupMembersList.getSelectedValue() != null &&
-                !groupMembersList.getSelectedValue().startsWith("姓名")) {
-            return groupMembersList.getSelectedValue().split(" ")[0];
-        }
-        return null;
+        List<String> names = getSelectedContactNames();
+        return names.isEmpty() ? null : names.get(0);
     }
 
     private void filterContacts() {
@@ -957,6 +961,100 @@ public class AddressBookApp extends JFrame {
             button.setMaximumSize(new Dimension(0, 0));
             return button;
         }
+
+
+    }
+
+    private void showMoveToGroupDialog() {
+        List<String> selectedNames = getSelectedContactNames();
+        if (selectedNames.isEmpty()) {
+            JOptionPane.showMessageDialog(this, "请先选择一个或多个联系人！");
+            return;
+        }
+
+        JComboBox<String> groupComboBox = new JComboBox<>();
+        for (int i = 0; i < groupListModel.size(); i++) {
+            groupComboBox.addItem(groupListModel.getElementAt(i));
+        }
+        styleComboBox(groupComboBox);
+
+        int result = JOptionPane.showConfirmDialog(
+                this,
+                groupComboBox,
+                "选择目标分组",
+                JOptionPane.OK_CANCEL_OPTION,
+                JOptionPane.PLAIN_MESSAGE);
+
+        if (result == JOptionPane.OK_OPTION) {
+            String targetGroup = (String) groupComboBox.getSelectedItem();
+            if (targetGroup != null) {
+                moveContactsToGroup(selectedNames, targetGroup);
+            }
+        }
+    }
+
+    private void moveContactsToGroup(List<String> names, String targetGroup) {
+        try {
+            List<personalInfo> contacts = personalDao.loadAll();
+            List<personalInfo> toUpdate = new ArrayList<>();
+
+            for (personalInfo contact : contacts) {
+                if (names.contains(contact.getName())) {
+                    contact.setGroup(targetGroup);
+                    toUpdate.add(contact);
+                }
+            }
+
+            for (personalInfo contact : toUpdate) {
+                personalDao.update(contact);
+            }
+
+            loadContacts();
+            updateGroupMembersList();
+            JOptionPane.showMessageDialog(this,
+                    "成功将 " + toUpdate.size() + " 个联系人移动到分组: " + targetGroup);
+        } catch (IOException ex) {
+            JOptionPane.showMessageDialog(this,
+                    "移动联系人失败: " + ex.getMessage(),
+                    "错误",
+                    JOptionPane.ERROR_MESSAGE);
+        }
+    }
+
+    private void removeFromGroup() {
+        List<String> selectedNames = getSelectedContactNames();
+        if (selectedNames.isEmpty()) {
+            JOptionPane.showMessageDialog(this, "请先选择一个或多个联系人！");
+            return;
+        }
+
+        int confirm = JOptionPane.showConfirmDialog(
+                this,
+                "确定要将选中的 " + selectedNames.size() + " 个联系人从当前分组移除吗？",
+                "确认移除",
+                JOptionPane.YES_NO_OPTION);
+
+        if (confirm == JOptionPane.YES_OPTION) {
+            moveContactsToGroup(selectedNames, "未分组");
+        }
+    }
+
+    private List<String> getSelectedContactNames() {
+        List<String> names = new ArrayList<>();
+
+        if (!contactList.isSelectionEmpty()) {
+            names.addAll(contactList.getSelectedValuesList());
+        }
+
+        if (!groupMembersList.isSelectionEmpty()) {
+            for (String value : groupMembersList.getSelectedValuesList()) {
+                if (!value.startsWith("姓名")) {
+                    names.add(value.split(" ")[0]);
+                }
+            }
+        }
+
+        return names;
     }
 
     public static void main(String[] args) {
