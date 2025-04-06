@@ -36,9 +36,12 @@ public class AddressBookApp extends JFrame {
     private PersonalDao personalDao;
     private JButton editButton;
 
+    // 新增成员变量：存储用户选择的显示属性
+    private String[] displayFields = {"姓名", "电话", "邮箱"};
+
     public AddressBookApp() {
         setTitle("通讯录管理系统");
-        setSize(900, 600);
+        setSize(1200, 800);
         setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
         setLocationRelativeTo(null);
 
@@ -181,19 +184,45 @@ public class AddressBookApp extends JFrame {
         JPanel rightPanel = new JPanel(new BorderLayout());
         rightPanel.setOpaque(false);
 
-        // 组成员面板
+        // 创建顶部工具栏
+        JPanel toolbarPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 5, 5));
+        toolbarPanel.setOpaque(false);
+
+        // 添加搜索面板到工具栏
+        JPanel searchPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 5, 5));
+        searchPanel.setOpaque(false);
+        searchPanel.setBorder(BorderFactory.createEmptyBorder(0, 0, 0, 10));
+
+        searchField = new JTextField(20);
+        styleTextField(searchField);
+
+        JButton searchButton = createStyledButton("搜索", new Color(70, 130, 180));
+        searchButton.addActionListener(e -> searchContacts());
+        searchPanel.add(searchField);
+        searchPanel.add(searchButton);
+
+        // 添加显示设置按钮到工具栏
+        JButton displaySettingsButton = createStyledButton("显示设置", new Color(100, 149, 237));
+        displaySettingsButton.addActionListener(e -> showDisplaySettingsDialog());
+
+        toolbarPanel.add(searchPanel);
+        toolbarPanel.add(Box.createHorizontalStrut(10));
+        toolbarPanel.add(displaySettingsButton);
+
+        rightPanel.add(toolbarPanel, BorderLayout.NORTH);
+
+        // 组成员面板保持不变
         groupMembersPanel = createStyledPanel("组成员 - " + currentSelectedGroup, 450, 400);
         groupMembersPanel.setLayout(new BorderLayout());
         groupMembersModel = new DefaultListModel<>();
         groupMembersList = new JList<>(groupMembersModel);
         styleList(groupMembersList);
-        groupMembersList.setSelectionMode(ListSelectionModel.MULTIPLE_INTERVAL_SELECTION); // 允许多选
+        groupMembersList.setSelectionMode(ListSelectionModel.MULTIPLE_INTERVAL_SELECTION);
 
-        // 移除原有的鼠标监听器，替换为以下实现
         groupMembersList.addMouseListener(new MouseAdapter() {
             @Override
             public void mouseClicked(MouseEvent e) {
-                if (e.getClickCount() == 2) { // 仅双击时跳转
+                if (e.getClickCount() == 2) {
                     String selectedName = groupMembersList.getSelectedValue();
                     if (selectedName != null && !selectedName.startsWith("姓名")) {
                         showContactInfo(selectedName.split(" ")[0]);
@@ -204,7 +233,6 @@ public class AddressBookApp extends JFrame {
 
         groupMembersList.addListSelectionListener(e -> {
             if (!e.getValueIsAdjusting()) {
-                // 不再自动清除其他选择
                 enableEditButton(!groupMembersList.isSelectionEmpty());
             }
         });
@@ -213,22 +241,15 @@ public class AddressBookApp extends JFrame {
         styleScrollPane(groupMembersScrollPane);
         groupMembersPanel.add(groupMembersScrollPane, BorderLayout.CENTER);
 
-        // 搜索面板
-        JPanel searchPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 5, 5));
-        searchPanel.setOpaque(false);
-        searchPanel.setBorder(BorderFactory.createEmptyBorder(10, 0, 0, 0));
+        rightPanel.add(groupMembersPanel, BorderLayout.CENTER);
 
-        searchField = new JTextField(25);
-        styleTextField(searchField);
-
-        JButton searchButton = createStyledButton("搜索", new Color(70, 130, 180));
-        searchButton.addActionListener(e -> searchContacts());
-        searchPanel.add(searchField);
-        searchPanel.add(searchButton);
-
-        // 按钮面板
+        // 底部按钮面板重新组织
         JPanel buttonPanel = new JPanel(new FlowLayout(FlowLayout.CENTER, 15, 15));
         buttonPanel.setOpaque(false);
+
+        // 第一行按钮：联系人操作
+        JPanel contactButtonsPanel = new JPanel(new FlowLayout(FlowLayout.CENTER, 10, 5));
+        contactButtonsPanel.setOpaque(false);
 
         JButton addButton = createStyledButton("添加联系人", new Color(60, 179, 113));
         JButton deleteButton = createStyledButton("删除联系人", new Color(205, 92, 92));
@@ -236,18 +257,13 @@ public class AddressBookApp extends JFrame {
 
         setupButtonListeners(addButton, deleteButton, editButton, searchButton);
 
-        buttonPanel.add(addButton);
-        buttonPanel.add(deleteButton);
-        buttonPanel.add(editButton);
+        contactButtonsPanel.add(addButton);
+        contactButtonsPanel.add(deleteButton);
+        contactButtonsPanel.add(editButton);
 
-        // 组装右侧面板
-        rightPanel.add(groupMembersPanel, BorderLayout.CENTER);
-        rightPanel.add(searchPanel, BorderLayout.NORTH);
-        rightPanel.add(buttonPanel, BorderLayout.SOUTH);
-
-        // 添加到主面板
-        mainPanel.add(leftPanel, BorderLayout.WEST);
-        mainPanel.add(rightPanel, BorderLayout.CENTER);
+        // 第二行按钮：分组操作
+        JPanel groupButtonsPanel = new JPanel(new FlowLayout(FlowLayout.CENTER, 10, 5));
+        groupButtonsPanel.setOpaque(false);
 
         JButton moveToGroupButton = createStyledButton("移动到分组", new Color(70, 130, 180));
         JButton removeFromGroupButton = createStyledButton("从分组移除", new Color(205, 92, 92));
@@ -255,8 +271,19 @@ public class AddressBookApp extends JFrame {
         moveToGroupButton.addActionListener(e -> showMoveToGroupDialog());
         removeFromGroupButton.addActionListener(e -> removeFromGroup());
 
-        buttonPanel.add(moveToGroupButton);
-        buttonPanel.add(removeFromGroupButton);
+        groupButtonsPanel.add(moveToGroupButton);
+        groupButtonsPanel.add(removeFromGroupButton);
+
+        // 将两行按钮面板添加到主按钮面板
+        buttonPanel.setLayout(new BoxLayout(buttonPanel, BoxLayout.Y_AXIS));
+        buttonPanel.add(contactButtonsPanel);
+        buttonPanel.add(groupButtonsPanel);
+
+        rightPanel.add(buttonPanel, BorderLayout.SOUTH);
+
+        // 添加到主面板
+        mainPanel.add(leftPanel, BorderLayout.WEST);
+        mainPanel.add(rightPanel, BorderLayout.CENTER);
     }
 
     private void loadGroupList() {
@@ -438,11 +465,14 @@ public class AddressBookApp extends JFrame {
         return panel;
     }
 
+    // 更新按钮样式方法，添加最小宽度设置
     private JButton createStyledButton(String text, Color bgColor) {
         JButton button = new JButton(text);
         button.setFont(new Font("微软雅黑", Font.BOLD, 12));
         button.setBackground(bgColor);
-        button.setForeground(Color.BLACK); // 固定使用黑色文字
+        button.setForeground(Color.BLACK);
+        button.setMinimumSize(new Dimension(100, 30)); // 设置最小宽度
+        button.setPreferredSize(new Dimension(120, 30));
 
         button.setFocusPainted(false);
         button.setBorder(BorderFactory.createCompoundBorder(
@@ -465,7 +495,6 @@ public class AddressBookApp extends JFrame {
 
         return button;
     }
-
     // 样式化列表
     private void styleList(JList<?> list) {
         list.setSelectionMode(ListSelectionModel.MULTIPLE_INTERVAL_SELECTION);
@@ -864,24 +893,62 @@ public class AddressBookApp extends JFrame {
 
     private void updateGroupMembersList() {
         groupMembersModel.clear();
-
+        
+        // 默认显示字段（如果没有设置）
+        String[] fieldsToDisplay = this.displayFields != null ? this.displayFields 
+                             : new String[]{"姓名", "电话", "邮箱"};
+    
         try {
-            // 添加表头
-            String header = String.format("%-20s %-15s %-30s", "姓名", "电话", "邮箱");
-            groupMembersModel.addElement(header);
-
+            // 生成表头
+            StringBuilder headerBuilder = new StringBuilder();
+            for (String field : fieldsToDisplay) {
+                switch (field) {
+                    case "姓名": headerBuilder.append(String.format("%-20s ", field)); break;
+                    case "电话": headerBuilder.append(String.format("%-15s ", field)); break;
+                    case "邮箱": headerBuilder.append(String.format("%-30s ", field)); break;
+                    case "单位": headerBuilder.append(String.format("%-20s ", field)); break;
+                    case "地址": headerBuilder.append(String.format("%-30s ", field)); break;
+                    case "生日": headerBuilder.append(String.format("%-12s ", field)); break;
+                }
+            }
+            groupMembersModel.addElement(headerBuilder.toString().trim());
+    
             // 添加组成员
             List<personalInfo> contacts = personalDao.loadAll();
             for (personalInfo contact : contacts) {
                 if (contact.getGroups().contains(currentSelectedGroup)) {
-                    String displayText = String.format("%-20s %-15s %-30s",
-                            contact.getName(),
-                            contact.getTelephone() != null ? contact.getTelephone() : "无",
-                            contact.getEmail() != null ? contact.getEmail() : "无");
-                    groupMembersModel.addElement(displayText);
+                    StringBuilder rowBuilder = new StringBuilder();
+                    for (String field : fieldsToDisplay) {
+                        switch (field) {
+                            case "姓名": 
+                                rowBuilder.append(String.format("%-20s ", contact.getName()));
+                                break;
+                            case "电话": 
+                                rowBuilder.append(String.format("%-15s ", 
+                                    contact.getTelephone() != null ? contact.getTelephone() : "无"));
+                                break;
+                            case "邮箱": 
+                                rowBuilder.append(String.format("%-30s ", 
+                                    contact.getEmail() != null ? contact.getEmail() : "无"));
+                                break;
+                            case "单位": 
+                                rowBuilder.append(String.format("%-20s ", 
+                                    contact.getCompany() != null ? contact.getCompany() : "无"));
+                                break;
+                            case "地址": 
+                                rowBuilder.append(String.format("%-30s ", 
+                                    contact.getAddress() != null ? contact.getAddress() : "无"));
+                                break;
+                            case "生日": 
+                                rowBuilder.append(String.format("%-12s ", 
+                                    contact.getBirthday() != null ? contact.getBirthday() : "无"));
+                                break;
+                        }
+                    }
+                    groupMembersModel.addElement(rowBuilder.toString().trim());
                 }
             }
-
+    
             // 更新标题
             updateGroupMembersTitle();
         } catch (Exception e) {
@@ -1210,16 +1277,88 @@ public class AddressBookApp extends JFrame {
         return names;
     }
 
-    public static void main(String[] args) {
-        try {
-            UIManager.setLookAndFeel(UIManager.getSystemLookAndFeelClassName());
-        } catch (Exception e) {
-            e.printStackTrace();
-        }
+    // 新增方法：显示属性设置对话框
+    private void showDisplaySettingsDialog() {
+        // 获取当前可用的属性列表
+        String[] availableFields = {"姓名", "电话", "邮箱", "单位", "地址", "生日"};
+        
+        // 创建对话框面板
+        JPanel panel = new JPanel(new BorderLayout(10, 10));
+        panel.setBorder(BorderFactory.createEmptyBorder(15, 15, 15, 15));
 
-        SwingUtilities.invokeLater(() -> {
-            AddressBookApp app = new AddressBookApp();
-            app.setVisible(true);
+        // 添加说明标签
+        JLabel label = new JLabel("<html><b>选择要在组成员列表中显示的属性:</b></html>");
+        label.setFont(new Font("微软雅黑", Font.BOLD, 13));
+        panel.add(label, BorderLayout.NORTH);
+
+        // 创建属性选择列表
+        JList<String> fieldsList = new JList<>(availableFields);
+        fieldsList.setSelectionMode(ListSelectionModel.MULTIPLE_INTERVAL_SELECTION);
+        
+        // 设置默认选中的属性（从配置或默认值）
+        List<Integer> defaultSelected = Arrays.asList(0, 1, 2); // 默认显示姓名、电话、邮箱
+        int[] selectedIndices = defaultSelected.stream().mapToInt(i -> i).toArray();
+        fieldsList.setSelectedIndices(selectedIndices);
+        
+        // 美化列表外观
+        fieldsList.setCellRenderer(new DefaultListCellRenderer() {
+            @Override
+            public Component getListCellRendererComponent(JList<?> list, Object value, 
+                    int index, boolean isSelected, boolean cellHasFocus) {
+                super.getListCellRendererComponent(list, value, index, isSelected, cellHasFocus);
+                setFont(new Font("微软雅黑", Font.PLAIN, 13));
+                setBorder(BorderFactory.createEmptyBorder(5, 8, 5, 8));
+                if (isSelected) {
+                    setBackground(new Color(70, 130, 180));
+                    setForeground(Color.WHITE);
+                }
+                return this;
+            }
         });
+
+        // 添加滚动面板
+        JScrollPane scrollPane = new JScrollPane(fieldsList);
+        styleScrollPane(scrollPane);
+        scrollPane.setPreferredSize(new Dimension(250, 150));
+        panel.add(scrollPane, BorderLayout.CENTER);
+
+        // 创建按钮面板
+        JPanel buttonPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT, 10, 5));
+        JButton okButton = createStyledButton("确定", new Color(60, 179, 113));
+        JButton cancelButton = createStyledButton("取消", new Color(205, 92, 92));
+
+        okButton.addActionListener(e -> {
+            List<String> selectedFields = fieldsList.getSelectedValuesList();
+            if (selectedFields.isEmpty()) {
+                JOptionPane.showMessageDialog(panel, "请至少选择一个属性！", "提示", JOptionPane.WARNING_MESSAGE);
+            } else {
+                // 保存设置并刷新显示
+                saveDisplaySettings(selectedFields);
+                updateGroupMembersList();
+                ((Window)SwingUtilities.getRoot(panel)).dispose();
+            }
+        });
+
+        cancelButton.addActionListener(e -> {
+            ((Window)SwingUtilities.getRoot(panel)).dispose();
+        });
+
+        buttonPanel.add(okButton);
+        buttonPanel.add(cancelButton);
+        panel.add(buttonPanel, BorderLayout.SOUTH);
+
+        // 创建并显示对话框
+        JDialog dialog = new JDialog(this, "显示设置", true);
+        dialog.setContentPane(panel);
+        dialog.pack();
+        dialog.setLocationRelativeTo(this);
+        dialog.setVisible(true);
+    }
+
+    // 新增方法：保存显示设置（简化版，实际可以保存到配置文件）
+    private void saveDisplaySettings(List<String> selectedFields) {
+        // 这里可以添加代码将设置保存到文件
+        // 暂时保存在内存中
+        this.displayFields = selectedFields.toArray(new String[0]);
     }
 }
