@@ -188,6 +188,15 @@ public class AddressBookApp extends JFrame {
         JPanel toolbarPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 5, 5));
         toolbarPanel.setOpaque(false);
 
+        JButton importButton = createStyledButton("导入", new Color(100, 149, 237));
+        JButton exportButton = createStyledButton("导出", new Color(100, 149, 237));
+
+        importButton.addActionListener(e -> showImportDialog());
+        exportButton.addActionListener(e -> showExportDialog());
+
+        toolbarPanel.add(importButton);
+        toolbarPanel.add(exportButton);
+
         // 添加搜索面板到工具栏
         JPanel searchPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 5, 5));
         searchPanel.setOpaque(false);
@@ -763,14 +772,14 @@ public class AddressBookApp extends JFrame {
             contact.setCompany(companyField.getText().trim());
             contact.setAddress(addressField.getText().trim());
             contact.setZipCode(zipCodeField.getText().trim());
-            
+
             // 处理分组更新 - 保留原有分组
             Set<String> newGroups = new HashSet<>(groupField.getSelectedValuesList());
             if (newGroups.isEmpty()) {
                 newGroups.add("未分组"); // 确保至少有一个分组
             }
             contact.setGroups(newGroups);
-            
+
             contact.setNotes(notesField.getText().trim());
 
             try {
@@ -893,11 +902,11 @@ public class AddressBookApp extends JFrame {
 
     private void updateGroupMembersList() {
         groupMembersModel.clear();
-        
+
         // 默认显示字段（如果没有设置）
-        String[] fieldsToDisplay = this.displayFields != null ? this.displayFields 
+        String[] fieldsToDisplay = this.displayFields != null ? this.displayFields
                              : new String[]{"姓名", "电话", "邮箱"};
-    
+
         try {
             // 生成表头
             StringBuilder headerBuilder = new StringBuilder();
@@ -912,7 +921,7 @@ public class AddressBookApp extends JFrame {
                 }
             }
             groupMembersModel.addElement(headerBuilder.toString().trim());
-    
+
             // 添加组成员
             List<personalInfo> contacts = personalDao.loadAll();
             for (personalInfo contact : contacts) {
@@ -920,27 +929,27 @@ public class AddressBookApp extends JFrame {
                     StringBuilder rowBuilder = new StringBuilder();
                     for (String field : fieldsToDisplay) {
                         switch (field) {
-                            case "姓名": 
+                            case "姓名":
                                 rowBuilder.append(String.format("%-20s ", contact.getName()));
                                 break;
-                            case "电话": 
-                                rowBuilder.append(String.format("%-15s ", 
+                            case "电话":
+                                rowBuilder.append(String.format("%-15s ",
                                     contact.getTelephone() != null ? contact.getTelephone() : "无"));
                                 break;
-                            case "邮箱": 
-                                rowBuilder.append(String.format("%-30s ", 
+                            case "邮箱":
+                                rowBuilder.append(String.format("%-30s ",
                                     contact.getEmail() != null ? contact.getEmail() : "无"));
                                 break;
-                            case "单位": 
-                                rowBuilder.append(String.format("%-20s ", 
+                            case "单位":
+                                rowBuilder.append(String.format("%-20s ",
                                     contact.getCompany() != null ? contact.getCompany() : "无"));
                                 break;
-                            case "地址": 
-                                rowBuilder.append(String.format("%-30s ", 
+                            case "地址":
+                                rowBuilder.append(String.format("%-30s ",
                                     contact.getAddress() != null ? contact.getAddress() : "无"));
                                 break;
-                            case "生日": 
-                                rowBuilder.append(String.format("%-12s ", 
+                            case "生日":
+                                rowBuilder.append(String.format("%-12s ",
                                     contact.getBirthday() != null ? contact.getBirthday() : "无"));
                                 break;
                         }
@@ -948,7 +957,7 @@ public class AddressBookApp extends JFrame {
                     groupMembersModel.addElement(rowBuilder.toString().trim());
                 }
             }
-    
+
             // 更新标题
             updateGroupMembersTitle();
         } catch (Exception e) {
@@ -1281,7 +1290,7 @@ public class AddressBookApp extends JFrame {
     private void showDisplaySettingsDialog() {
         // 获取当前可用的属性列表
         String[] availableFields = {"姓名", "电话", "邮箱", "单位", "地址", "生日"};
-        
+
         // 创建对话框面板
         JPanel panel = new JPanel(new BorderLayout(10, 10));
         panel.setBorder(BorderFactory.createEmptyBorder(15, 15, 15, 15));
@@ -1294,12 +1303,12 @@ public class AddressBookApp extends JFrame {
         // 创建属性选择列表
         JList<String> fieldsList = new JList<>(availableFields);
         fieldsList.setSelectionMode(ListSelectionModel.MULTIPLE_INTERVAL_SELECTION);
-        
+
         // 设置默认选中的属性（从配置或默认值）
         List<Integer> defaultSelected = Arrays.asList(0, 1, 2); // 默认显示姓名、电话、邮箱
         int[] selectedIndices = defaultSelected.stream().mapToInt(i -> i).toArray();
         fieldsList.setSelectedIndices(selectedIndices);
-        
+
         // 美化列表外观
         fieldsList.setCellRenderer(new DefaultListCellRenderer() {
             @Override
@@ -1355,10 +1364,220 @@ public class AddressBookApp extends JFrame {
         dialog.setVisible(true);
     }
 
-    // 新增方法：保存显示设置（简化版，实际可以保存到配置文件）
     private void saveDisplaySettings(List<String> selectedFields) {
-        // 这里可以添加代码将设置保存到文件
-        // 暂时保存在内存中
         this.displayFields = selectedFields.toArray(new String[0]);
+    }
+
+    private void showImportDialog() {
+        JPanel panel = new JPanel(new BorderLayout(10, 10));
+        panel.setBorder(BorderFactory.createEmptyBorder(15, 15, 15, 15));
+
+        // 格式选择
+        JPanel formatPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 10, 10));
+        formatPanel.add(new JLabel("导入格式:"));
+        JComboBox<String> formatCombo = new JComboBox<>(new String[]{"CSV", "vCard"});
+        styleComboBox(formatCombo);
+        formatPanel.add(formatCombo);
+
+        // 重复处理选项
+        JPanel optionPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 10, 10));
+        JCheckBox skipDuplicatesCheck = new JCheckBox("跳过重复联系人");
+        skipDuplicatesCheck.setSelected(true);
+        optionPanel.add(skipDuplicatesCheck);
+
+        // 文件选择
+        JPanel filePanel = new JPanel(new BorderLayout(10, 10));
+        JTextField fileField = new JTextField();
+        styleTextField(fileField);
+        JButton browseButton = createStyledButton("浏览...", new Color(70, 130, 180));
+
+        browseButton.addActionListener(e -> {
+            JFileChooser fileChooser = new JFileChooser();
+            int selectedFormat = formatCombo.getSelectedIndex();
+            if (selectedFormat == 0) {
+                fileChooser.setFileFilter(new FileNameExtensionFilter("CSV文件", "csv"));
+            } else {
+                fileChooser.setFileFilter(new FileNameExtensionFilter("vCard文件", "vcf"));
+            }
+
+            if (fileChooser.showOpenDialog(this) == JFileChooser.APPROVE_OPTION) {
+                fileField.setText(fileChooser.getSelectedFile().getAbsolutePath());
+            }
+        });
+
+        filePanel.add(fileField, BorderLayout.CENTER);
+        filePanel.add(browseButton, BorderLayout.EAST);
+
+        panel.add(formatPanel, BorderLayout.NORTH);
+        panel.add(filePanel, BorderLayout.CENTER);
+        panel.add(optionPanel, BorderLayout.SOUTH);
+
+        int result = JOptionPane.showConfirmDialog(
+                this,
+                panel,
+                "导入联系人",
+                JOptionPane.OK_CANCEL_OPTION,
+                JOptionPane.PLAIN_MESSAGE);
+
+        if (result == JOptionPane.OK_OPTION) {
+            String filePath = fileField.getText();
+            if (filePath.isEmpty()) {
+                JOptionPane.showMessageDialog(this, "请选择要导入的文件");
+                return;
+            }
+
+            try {
+                boolean skipDuplicates = skipDuplicatesCheck.isSelected();
+                if (formatCombo.getSelectedIndex() == 0) {
+                    personalDao.importFromCSV(filePath, skipDuplicates);
+                } else {
+                    personalDao.importFromVCard(filePath, skipDuplicates);
+                }
+
+                loadContacts();
+                JOptionPane.showMessageDialog(this, "导入成功!");
+            } catch (IOException ex) {
+                JOptionPane.showMessageDialog(
+                        this,
+                        "导入失败: " + ex.getMessage(),
+                        "错误",
+                        JOptionPane.ERROR_MESSAGE);
+            }
+        }
+    }
+
+    // 显示导出对话框
+    private void showExportDialog() {
+        JPanel panel = new JPanel(new BorderLayout(10, 10));
+        panel.setBorder(BorderFactory.createEmptyBorder(15, 15, 15, 15));
+
+        // 格式选择
+        JPanel formatPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 10, 10));
+        formatPanel.add(new JLabel("导出格式:"));
+        JComboBox<String> formatCombo = new JComboBox<>(new String[]{"CSV", "vCard"});
+        styleComboBox(formatCombo);
+        formatPanel.add(formatCombo);
+
+        // 导出范围选择
+        JPanel scopePanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 10, 10));
+        ButtonGroup scopeGroup = new ButtonGroup();
+        JRadioButton allContactsRadio = new JRadioButton("所有联系人", true);
+        JRadioButton selectedContactsRadio = new JRadioButton("选中的联系人");
+        JRadioButton currentGroupRadio = new JRadioButton("当前分组联系人");
+
+        scopeGroup.add(allContactsRadio);
+        scopeGroup.add(selectedContactsRadio);
+        scopeGroup.add(currentGroupRadio);
+
+        scopePanel.add(new JLabel("导出范围:"));
+        scopePanel.add(allContactsRadio);
+        scopePanel.add(selectedContactsRadio);
+        scopePanel.add(currentGroupRadio);
+
+        // 文件选择
+        JPanel filePanel = new JPanel(new BorderLayout(10, 10));
+        JTextField fileField = new JTextField();
+        styleTextField(fileField);
+        JButton browseButton = createStyledButton("浏览...", new Color(70, 130, 180));
+
+        browseButton.addActionListener(e -> {
+            JFileChooser fileChooser = new JFileChooser();
+            int selectedFormat = formatCombo.getSelectedIndex();
+            if (selectedFormat == 0) {
+                fileChooser.setFileFilter(new FileNameExtensionFilter("CSV文件", "csv"));
+            } else {
+                fileChooser.setFileFilter(new FileNameExtensionFilter("vCard文件", "vcf"));
+            }
+
+            if (fileChooser.showSaveDialog(this) == JFileChooser.APPROVE_OPTION) {
+                String filePath = fileChooser.getSelectedFile().getAbsolutePath();
+                // 确保文件扩展名正确
+                if (selectedFormat == 0 && !filePath.toLowerCase().endsWith(".csv")) {
+                    filePath += ".csv";
+                } else if (selectedFormat == 1 && !filePath.toLowerCase().endsWith(".vcf")) {
+                    filePath += ".vcf";
+                }
+                fileField.setText(filePath);
+            }
+        });
+
+        filePanel.add(fileField, BorderLayout.CENTER);
+        filePanel.add(browseButton, BorderLayout.EAST);
+
+        panel.add(formatPanel, BorderLayout.NORTH);
+        panel.add(scopePanel, BorderLayout.CENTER);
+        panel.add(filePanel, BorderLayout.SOUTH);
+
+        int result = JOptionPane.showConfirmDialog(
+                this,
+                panel,
+                "导出联系人",
+                JOptionPane.OK_CANCEL_OPTION,
+                JOptionPane.PLAIN_MESSAGE);
+
+        if (result == JOptionPane.OK_OPTION) {
+            String filePath = fileField.getText();
+            if (filePath.isEmpty()) {
+                JOptionPane.showMessageDialog(this, "请选择导出文件路径");
+                return;
+            }
+
+            try {
+                int exportScope = 0; // 0=所有, 1=选中, 2=当前分组
+                if (selectedContactsRadio.isSelected()) exportScope = 1;
+                else if (currentGroupRadio.isSelected()) exportScope = 2;
+
+                List<personalInfo> contactsToExport = getContactsForExport(exportScope);
+
+                if (contactsToExport.isEmpty()) {
+                    JOptionPane.showMessageDialog(this, "没有联系人可导出");
+                    return;
+                }
+
+                if (formatCombo.getSelectedIndex() == 0) {
+                    personalDao.exportToCSV(contactsToExport, filePath);
+                } else {
+                    personalDao.exportToVCard(contactsToExport, filePath);
+                }
+
+                JOptionPane.showMessageDialog(this, "成功导出 " + contactsToExport.size() + " 个联系人");
+            } catch (IOException ex) {
+                JOptionPane.showMessageDialog(
+                        this,
+                        "导出失败: " + ex.getMessage(),
+                        "错误",
+                        JOptionPane.ERROR_MESSAGE);
+            }
+        }
+    }
+
+    // 根据导出范围获取联系人列表
+    private List<personalInfo> getContactsForExport(int exportScope) throws IOException {
+        List<personalInfo> allContacts = personalDao.loadAll();
+
+        if (exportScope == 0) { // 所有联系人
+            return allContacts;
+        } else if (exportScope == 1) { // 选中的联系人
+            List<String> selectedNames = getSelectedContactNames();
+            List<personalInfo> selectedContacts = new ArrayList<>();
+
+            for (personalInfo contact : allContacts) {
+                if (selectedNames.contains(contact.getName())) {
+                    selectedContacts.add(contact);
+                }
+            }
+
+            return selectedContacts;
+        } else { // 当前分组联系人
+            List<personalInfo> groupContacts = new ArrayList<>();
+
+            for (personalInfo contact : allContacts) {
+                if (contact.getGroups().contains(currentSelectedGroup)) {
+                    groupContacts.add(contact);
+                }
+            }
+
+            return groupContacts;
+        }
     }
 }

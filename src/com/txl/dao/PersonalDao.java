@@ -1,14 +1,13 @@
 package com.txl.dao;
 
 import com.txl.dean.personalInfo;
+
 import java.io.*;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.*;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Set;
+import java.nio.file.Files;
+import java.nio.file.Paths;
+import java.nio.file.StandardOpenOption;
+import java.util.*;
 
 public class PersonalDao {
     private static final String CSV_HEADER = "姓名,电话,邮箱,主页,生日,照片,单位,地址,邮编,分组,备注";
@@ -273,4 +272,199 @@ public class PersonalDao {
 
         return fields;
     }
+
+    // 在PersonalDao类中添加以下方法
+
+    // 导出全部联系人到CSV文件
+    public void exportAllToCSV(String exportPath) throws IOException {
+        List<personalInfo> contacts = loadAll();
+        exportToCSV(contacts, exportPath);
+    }
+
+    // 导出指定联系人到CSV文件
+    public void exportToCSV(List<personalInfo> contacts, String exportPath) throws IOException {
+        List<String> lines = new ArrayList<>();
+        lines.add(CSV_HEADER);
+
+        for (personalInfo contact : contacts) {
+            lines.add(contactToCsvLine(contact));
+        }
+
+        Files.write(Paths.get(exportPath), lines, StandardCharsets.UTF_8);
+    }
+
+    // 从CSV文件导入联系人
+    public void importFromCSV(String importPath, boolean skipDuplicates) throws IOException {
+        List<personalInfo> existingContacts = loadAll();
+        Set<String> existingNames = new HashSet<>();
+        for (personalInfo contact : existingContacts) {
+            existingNames.add(contact.getName());
+        }
+
+        List<personalInfo> newContacts = new ArrayList<>();
+        try (BufferedReader reader = new BufferedReader(new FileReader(importPath))) {
+            String line;
+            boolean isHeader = true;
+
+            while ((line = reader.readLine()) != null) {
+                if (isHeader) {
+                    isHeader = false;
+                    continue;
+                }
+
+                personalInfo contact = parseContactFromCsvLine(line);
+                if (contact != null) {
+                    if (skipDuplicates && existingNames.contains(contact.getName())) {
+                        continue;
+                    }
+                    newContacts.add(contact);
+                }
+            }
+        }
+
+        // 批量添加新联系人
+        for (personalInfo contact : newContacts) {
+            add(contact);
+        }
+    }
+
+    // 导出全部联系人到vCard文件
+    public void exportAllToVCard(String exportPath) throws IOException {
+        List<personalInfo> contacts = loadAll();
+        exportToVCard(contacts, exportPath);
+    }
+
+    // 导出指定联系人到vCard文件
+    public void exportToVCard(List<personalInfo> contacts, String exportPath) throws IOException {
+        StringBuilder vcardContent = new StringBuilder();
+
+        for (personalInfo contact : contacts) {
+            vcardContent.append(contactToVCard(contact)).append("\n");
+        }
+
+        Files.write(Paths.get(exportPath), vcardContent.toString().getBytes(StandardCharsets.UTF_8));
+    }
+
+    // 从vCard文件导入联系人
+    public void importFromVCard(String importPath, boolean skipDuplicates) throws IOException {
+        List<personalInfo> existingContacts = loadAll();
+        Set<String> existingNames = new HashSet<>();
+        for (personalInfo contact : existingContacts) {
+            existingNames.add(contact.getName());
+        }
+
+        String vcardContent = new String(Files.readAllBytes(Paths.get(importPath)), StandardCharsets.UTF_8);
+        String[] vcards = vcardContent.split("END:VCARD");
+
+        List<personalInfo> newContacts = new ArrayList<>();
+
+        for (String vcard : vcards) {
+            if (vcard.trim().isEmpty()) continue;
+
+            personalInfo contact = parseVCard(vcard + "END:VCARD");
+            if (contact != null) {
+                if (skipDuplicates && existingNames.contains(contact.getName())) {
+                    continue;
+                }
+                newContacts.add(contact);
+            }
+        }
+
+        // 批量添加新联系人
+        for (personalInfo contact : newContacts) {
+            add(contact);
+        }
+    }
+
+    // 将联系人转换为vCard格式
+    private String contactToVCard(personalInfo contact) {
+        StringBuilder vcard = new StringBuilder();
+        vcard.append("BEGIN:VCARD\n");
+        vcard.append("VERSION:3.0\n");
+        vcard.append("FN:").append(escapeVCardField(contact.getName())).append("\n");
+
+        if (contact.getTelephone() != null && !contact.getTelephone().isEmpty()) {
+            vcard.append("TEL:").append(contact.getTelephone()).append("\n");
+        }
+
+        if (contact.getEmail() != null && !contact.getEmail().isEmpty()) {
+            vcard.append("EMAIL:").append(contact.getEmail()).append("\n");
+        }
+
+        if (contact.getBirthday() != null && !contact.getBirthday().isEmpty()) {
+            vcard.append("BDAY:").append(contact.getBirthday()).append("\n");
+        }
+
+        if (contact.getCompany() != null && !contact.getCompany().isEmpty()) {
+            vcard.append("ORG:").append(escapeVCardField(contact.getCompany())).append("\n");
+        }
+
+        if (contact.getAddress() != null && !contact.getAddress().isEmpty()) {
+            vcard.append("ADR:;;").append(escapeVCardField(contact.getAddress())).append("\n");
+        }
+
+        if (contact.getNotes() != null && !contact.getNotes().isEmpty()) {
+            vcard.append("NOTE:").append(escapeVCardField(contact.getNotes())).append("\n");
+        }
+
+        if (contact.getPhoto() != null && !contact.getPhoto().isEmpty()) {
+            try {
+                String photoBase64 = encodePhotoToBase64(contact.getPhoto());
+                vcard.append("PHOTO;ENCODING=BASE64;TYPE=JPEG:").append(photoBase64).append("\n");
+            } catch (IOException e) {
+                System.err.println("无法编码照片: " + e.getMessage());
+            }
+        }
+
+        vcard.append("END:VCARD");
+        return vcard.toString();
+    }
+
+    // 解析vCard为联系人对象
+    private personalInfo parseVCard(String vcard) {
+        personalInfo contact = null;
+
+        String[] lines = vcard.split("\n");
+        for (String line : lines) {
+            if (line.startsWith("FN:")) {
+                String name = unescapeVCardField(line.substring(3).trim());
+                contact = new personalInfo(name);
+            } else if (contact != null) {
+                if (line.startsWith("TEL:")) {
+                    contact.setTelephone(line.substring(4).trim());
+                } else if (line.startsWith("EMAIL:")) {
+                    contact.setEmail(line.substring(6).trim());
+                } else if (line.startsWith("BDAY:")) {
+                    contact.setBirthday(line.substring(5).trim());
+                } else if (line.startsWith("ORG:")) {
+                    contact.setCompany(unescapeVCardField(line.substring(4).trim()));
+                } else if (line.startsWith("ADR:;;")) {
+                    contact.setAddress(unescapeVCardField(line.substring(5).trim()));
+                } else if (line.startsWith("NOTE:")) {
+                    contact.setNotes(unescapeVCardField(line.substring(5).trim()));
+                }
+            }
+        }
+
+        return contact;
+    }
+
+    // 编码照片为Base64
+    private String encodePhotoToBase64(String photoPath) throws IOException {
+        byte[] photoBytes = Files.readAllBytes(Paths.get(photoPath));
+        return Base64.getEncoder().encodeToString(photoBytes);
+    }
+
+    // 转义vCard字段中的特殊字符
+    private String escapeVCardField(String field) {
+        if (field == null) return "";
+        return field.replace("\n", "\\n").replace(",", "\\,").replace(";", "\\;");
+    }
+
+    // 反转义vCard字段
+    private String unescapeVCardField(String field) {
+        if (field == null) return "";
+        return field.replace("\\n", "\n").replace("\\,", ",").replace("\\;", ";");
+    }
 }
+
