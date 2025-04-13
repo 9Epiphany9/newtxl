@@ -1,8 +1,9 @@
 package com.txl.dean;
 
+import com.txl.utils.PinyinUtils;
+
 import java.util.HashSet;
 import java.util.Set;
-
 public class personalInfo {
     private String name;            // 姓名
     private String telephone;       // 电话
@@ -15,6 +16,8 @@ public class personalInfo {
     private String zipCode;        // 邮编
     private Set<String> groups = new HashSet<>();
     private String notes;          // 备注信息
+    private String pinyinInitials;  // 拼音首字母
+    private String fullPinyin;      // 完整拼音
 
     public personalInfo() {
         this.groups = new HashSet<>();
@@ -24,11 +27,18 @@ public class personalInfo {
     public personalInfo(String name) {
         this();
         this.name = name;
+        this.groups = new HashSet<>();
+        this.groups.add("未分组");
     }
 
     // Getters and Setters
+    public void setName(String name) {
+        this.name = name;
+        this.pinyinInitials = PinyinUtils.getPinyinInitials(name);
+        this.fullPinyin = PinyinUtils.getFullPinyin(name);
+    }
+
     public String getName() { return name; }
-    public void setName(String name) { this.name = name; }
 
     public String getTelephone() { return telephone; }
     public void setTelephone(String telephone) { this.telephone = telephone; }
@@ -53,6 +63,22 @@ public class personalInfo {
 
     public String getZipCode() { return zipCode; }
     public void setZipCode(String zipCode) { this.zipCode = zipCode; }
+
+    public String getPinyinInitials() {
+        return pinyinInitials;
+    }
+
+    public void setPinyinInitials(String pinyinInitials) {
+        this.pinyinInitials = pinyinInitials;
+    }
+
+    public String getFullPinyin() {
+        return fullPinyin;
+    }
+
+    public void setFullPinyin(String fullPinyin) {
+        this.fullPinyin = fullPinyin;
+    }
 
     public Set<String> getGroups() { 
         return groups; 

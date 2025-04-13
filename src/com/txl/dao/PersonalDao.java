@@ -10,7 +10,7 @@ import java.nio.file.StandardOpenOption;
 import java.util.*;
 
 public class PersonalDao {
-    private static final String CSV_HEADER = "姓名,电话,邮箱,主页,生日,照片,单位,地址,邮编,分组,备注";
+    private static final String CSV_HEADER = "姓名,电话,邮箱,主页,生日,照片,单位,地址,邮编,分组,备注,拼音首字母,完整拼音";
     private final String csvFilePath;
 
     public PersonalDao(String csvFilePath) {
@@ -55,8 +55,11 @@ public class PersonalDao {
             return;
         }
 
+        // 确保拼音首字母和完整拼音字段被正确设置
+        info.setName(info.getName());
+
         // 构建CSV行
-        String csvLine = String.format("%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s",
+        String csvLine = String.format("%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s",
             escapeCsvField(info.getName()),
             escapeCsvField(info.getTelephone()),
             escapeCsvField(info.getEmail()),
@@ -66,8 +69,10 @@ public class PersonalDao {
             escapeCsvField(info.getCompany()),
             escapeCsvField(info.getAddress()),
             escapeCsvField(info.getZipCode()),
-            escapeCsvField(String.join(";", info.getGroups())), // 修改此行
-            escapeCsvField(info.getNotes())
+            escapeCsvField(String.join(";", info.getGroups())),
+            escapeCsvField(info.getNotes()),
+            escapeCsvField(info.getPinyinInitials()),
+            escapeCsvField(info.getFullPinyin())
         );
 
         // 追加到文件
@@ -88,28 +93,45 @@ public class PersonalDao {
         File file = new File(csvFilePath);
 
         if (!file.exists()) {
-            return contacts; // 文件不存在，返回空列表
+            throw new IOException("CSV文件不存在: " + csvFilePath); // 抛出异常，提示文件不存在
         }
 
         try (BufferedReader reader = new BufferedReader(new FileReader(file))) {
             String line;
             boolean isHeader = true;
+            int lineNumber = 0;
 
             while ((line = reader.readLine()) != null) {
+                lineNumber++;
+                System.out.println("正在处理第 " + lineNumber + " 行: " + line); // 调试日志：打印每一行内容
+
                 if (isHeader) {
-                    isHeader = false; // 跳过表头
+                    System.out.println("跳过表头行"); // 调试日志：表头处理
+                    isHeader = false;
                     continue;
                 }
 
                 if (line.trim().isEmpty()) {
-                    continue; // 跳过空行
+                    System.out.println("跳过空行"); // 调试日志：空行处理
+                    continue;
                 }
 
                 personalInfo contact = parseContactFromCsvLine(line);
                 if (contact != null) {
                     contacts.add(contact);
+                    System.out.println("成功解析联系人: " + contact.getName()); // 调试日志：成功解析联系人
+                } else {
+                    System.err.println("解析CSV行失败: " + line); // 添加日志，提示解析失败的行
                 }
             }
+        } catch (IOException e) {
+            throw new IOException("读取CSV文件失败，请检查文件格式或路径: " + e.getMessage()); // 抛出更详细的异常信息
+        }
+
+        if (contacts.isEmpty()) {
+            System.err.println("警告: 未找到任何联系人，请检查CSV文件内容是否正确。"); // 添加警告日志
+        } else {
+            System.out.println("总共找到 " + contacts.size() + " 个联系人"); // 调试日志：总联系人数
         }
 
         return contacts;
@@ -174,25 +196,26 @@ public class PersonalDao {
     }
 
     private String contactToCsvLine(personalInfo contact) {
-        return String.format("%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s",
-            escapeCsvField(contact.getName()),
-            escapeCsvField(contact.getTelephone()),
-            escapeCsvField(contact.getEmail()),
-            escapeCsvField(contact.getHomepage()),
-            escapeCsvField(contact.getBirthday()),
-            escapeCsvField(contact.getPhoto()),
-            escapeCsvField(contact.getCompany()),
-            escapeCsvField(contact.getAddress()),
-            escapeCsvField(contact.getZipCode()),
-            escapeCsvField(String.join(";", contact.getGroups())), // 修改此行
-            escapeCsvField(contact.getNotes())
+        return String.format("%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s",
+                escapeCsvField(contact.getName()),
+                escapeCsvField(contact.getTelephone()),
+                escapeCsvField(contact.getEmail()),
+                escapeCsvField(contact.getHomepage()),
+                escapeCsvField(contact.getBirthday()),
+                escapeCsvField(contact.getPhoto()),
+                escapeCsvField(contact.getCompany()),
+                escapeCsvField(contact.getAddress()),
+                escapeCsvField(contact.getZipCode()),
+                escapeCsvField(String.join(";", contact.getGroups())),                escapeCsvField(contact.getNotes()),
+                escapeCsvField(contact.getPinyinInitials()),
+                escapeCsvField(contact.getFullPinyin())
         );
     }
 
     private personalInfo parseContactFromCsvLine(String line) {
         try {
             List<String> fields = parseCSV(line);
-            if (fields.size() < 11) return null;
+            if (fields.size() < 13) return null; // 修改此行，确保字段数量足够
 
             personalInfo contact = new personalInfo(fields.get(0));
             contact.setTelephone(fields.get(1));
@@ -203,12 +226,14 @@ public class PersonalDao {
             contact.setCompany(fields.get(6));
             contact.setAddress(fields.get(7));
             contact.setZipCode(fields.get(8));
-            
+
             // 修改分组解析逻辑
             Set<String> groups = new HashSet<>(Arrays.asList(fields.get(9).split(";")));
             contact.setGroups(groups);
-            
+
             contact.setNotes(fields.get(10));
+            contact.setPinyinInitials(fields.get(11));
+            contact.setFullPinyin(fields.get(12));
 
             return contact;
         } catch (Exception e) {
@@ -330,8 +355,7 @@ public class PersonalDao {
 
     // 导出全部联系人到vCard文件
     public void exportAllToVCard(String exportPath) throws IOException {
-        List<personalInfo> contacts = loadAll();
-        exportToVCard(contacts, exportPath);
+        List<personalInfo> contacts = loadAll();        exportToVCard(contacts, exportPath);
     }
 
     // 导出指定联系人到vCard文件
@@ -467,4 +491,3 @@ public class PersonalDao {
         return field.replace("\\n", "\n").replace("\\,", ",").replace("\\;", ";");
     }
 }
-

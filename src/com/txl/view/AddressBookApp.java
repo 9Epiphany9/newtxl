@@ -757,33 +757,43 @@ public class AddressBookApp extends JFrame {
         // 确认按钮
         JButton okButton = new JButton("确定");
         okButton.addActionListener(e -> {
-            String name = nameField.getText().trim();
-            if (name.isEmpty()) {
+            String newName = nameField.getText().trim();
+            if (newName.isEmpty()) {
                 JOptionPane.showMessageDialog(this, "姓名不能为空！");
                 return;
             }
 
-            personalInfo contact = new personalInfo(name);
-            contact.setTelephone(telephoneField.getText().trim());
-            contact.setEmail(emailField.getText().trim());
-            contact.setHomepage(homepageField.getText().trim());
-            contact.setBirthday(birthdayField.getText().trim());
-            contact.setPhoto(photoField.getText().trim());
-            contact.setCompany(companyField.getText().trim());
-            contact.setAddress(addressField.getText().trim());
-            contact.setZipCode(zipCodeField.getText().trim());
+            personalInfo updatedContact = new personalInfo(newName);
+            updatedContact.setTelephone(telephoneField.getText().trim());
+            updatedContact.setEmail(emailField.getText().trim());
+            updatedContact.setHomepage(homepageField.getText().trim());
+            updatedContact.setBirthday(birthdayField.getText().trim());
+            updatedContact.setPhoto(photoField.getText().trim());
+            updatedContact.setCompany(companyField.getText().trim());
+            updatedContact.setAddress(addressField.getText().trim());
+            updatedContact.setZipCode(zipCodeField.getText().trim());
 
-            // 处理分组更新 - 保留原有分组
+            // 处理分组更新
             Set<String> newGroups = new HashSet<>(groupField.getSelectedValuesList());
             if (newGroups.isEmpty()) {
                 newGroups.add("未分组"); // 确保至少有一个分组
             }
-            contact.setGroups(newGroups);
+            updatedContact.setGroups(newGroups);
 
-            contact.setNotes(notesField.getText().trim());
+            updatedContact.setNotes(notesField.getText().trim());
 
             try {
-                personalDao.update(contact);
+                // 如果姓名被修改了
+                if (!newName.equals(currentName)) {
+                    // 先删除原来的联系人
+                    personalDao.delete(currentName);
+                    // 再添加新联系人
+                    personalDao.add(updatedContact);
+                } else {
+                    // 如果姓名没变，直接更新
+                    personalDao.update(updatedContact);
+                }
+
                 loadContacts();
                 loadGroupList(); // 刷新分组列表
                 JOptionPane.showMessageDialog(this, "联系人编辑成功！");
@@ -846,12 +856,21 @@ public class AddressBookApp extends JFrame {
                 DefaultListModel<String> filteredModel = new DefaultListModel<>();
 
                 for (personalInfo contact : contacts) {
-                    if (contact.getName().toLowerCase().contains(keyword) ||
-                            (contact.getTelephone() != null && contact.getTelephone().toLowerCase().contains(keyword)) ||
-                            (contact.getEmail() != null && contact.getEmail().toLowerCase().contains(keyword))) {
+                    // 原始名称匹配
+                    boolean nameMatch = contact.getName().toLowerCase().contains(keyword);
+                    // 拼音首字母匹配（统一使用大写比较）
+                    boolean initialsMatch = contact.getPinyinInitials().toUpperCase().contains(keyword.toUpperCase());
+                    // 完整拼音匹配
+                    boolean fullPinyinMatch = contact.getFullPinyin().toLowerCase().contains(keyword);
+                    // 其他字段匹配
+                    boolean otherFieldsMatch = (contact.getTelephone() != null && contact.getTelephone().toLowerCase().contains(keyword)) ||
+                            (contact.getEmail() != null && contact.getEmail().toLowerCase().contains(keyword));
+
+                    if (nameMatch || initialsMatch || fullPinyinMatch || otherFieldsMatch) {
                         filteredModel.addElement(contact.getName());
                     }
                 }
+
                 contactList.setModel(filteredModel);
 
                 String message = String.format("找到 %d 个匹配的联系人", filteredModel.getSize());
@@ -1057,7 +1076,6 @@ public class AddressBookApp extends JFrame {
             button.setMaximumSize(new Dimension(0, 0));
             return button;
         }
-
 
     }
 
@@ -1435,6 +1453,7 @@ public class AddressBookApp extends JFrame {
                 }
 
                 loadContacts();
+                loadGroupList(); // 重新加载联系人列表和分组列表
                 JOptionPane.showMessageDialog(this, "导入成功!");
             } catch (IOException ex) {
                 JOptionPane.showMessageDialog(
@@ -1539,6 +1558,9 @@ public class AddressBookApp extends JFrame {
                 } else {
                     personalDao.exportToVCard(contactsToExport, filePath);
                 }
+
+                loadContacts();
+                loadGroupList();
 
                 JOptionPane.showMessageDialog(this, "成功导出 " + contactsToExport.size() + " 个联系人");
             } catch (IOException ex) {
