@@ -2,6 +2,7 @@ package com.txl.view;
 
 import com.txl.dao.PersonalDao;
 import com.txl.dean.personalInfo;
+import com.txl.utils.PinyinUtils;
 
 import javax.swing.*;
 import javax.swing.border.Border;
@@ -850,41 +851,90 @@ public class AddressBookApp extends JFrame {
 
     private void searchContacts() {
         String keyword = searchField.getText().trim().toLowerCase();
-        if (!keyword.isEmpty()) {
-            try {
-                List<personalInfo> contacts = personalDao.loadAll();
-                DefaultListModel<String> filteredModel = new DefaultListModel<>();
+        DefaultListModel<String> filteredModel = new DefaultListModel<>();
 
-                for (personalInfo contact : contacts) {
-                    // 原始名称匹配
-                    boolean nameMatch = contact.getName().toLowerCase().contains(keyword);
-                    // 拼音首字母匹配（统一使用大写比较）
-                    boolean initialsMatch = contact.getPinyinInitials().toUpperCase().contains(keyword.toUpperCase());
-                    // 完整拼音匹配
-                    boolean fullPinyinMatch = contact.getFullPinyin().toLowerCase().contains(keyword);
-                    // 其他字段匹配
-                    boolean otherFieldsMatch = (contact.getTelephone() != null && contact.getTelephone().toLowerCase().contains(keyword)) ||
-                            (contact.getEmail() != null && contact.getEmail().toLowerCase().contains(keyword));
+        if (keyword.isEmpty()) {
+            contactList.setModel(contactListModel);
+            JOptionPane.showMessageDialog(this, "请输入搜索关键词");
+            return;
+        }
 
-                    if (nameMatch || initialsMatch || fullPinyinMatch || otherFieldsMatch) {
-                        filteredModel.addElement(contact.getName());
-                    }
+        try {
+            List<personalInfo> contacts = personalDao.loadAll();
+            // Filter contacts based on keyword
+            List<personalInfo> filteredContacts = new ArrayList<>();
+            for (personalInfo contact : contacts) {
+                boolean nameMatch = contact.getName().toLowerCase().contains(keyword);
+                boolean initialsMatch = contact.getPinyinInitials().toUpperCase().contains(keyword.toUpperCase());
+                boolean fullPinyinMatch = contact.getFullPinyin().toLowerCase().contains(keyword);
+                boolean otherFieldsMatch = (contact.getTelephone() != null && contact.getTelephone().toLowerCase().contains(keyword)) ||
+                        (contact.getEmail() != null && contact.getEmail().toLowerCase().contains(keyword));
+
+                if (nameMatch || initialsMatch || fullPinyinMatch || otherFieldsMatch) {
+                    filteredContacts.add(contact);
                 }
-
-                contactList.setModel(filteredModel);
-
-                String message = String.format("找到 %d 个匹配的联系人", filteredModel.getSize());
-                JOptionPane.showMessageDialog(this, message);
-            } catch (IOException ex) {
-                JOptionPane.showMessageDialog(this,
-                        "搜索联系人失败: " + ex.getMessage(),
-                        "错误",
-                        JOptionPane.ERROR_MESSAGE);
-                contactList.setModel(contactListModel);
             }
-        } else {
+
+            // Sort contacts by name
+            filteredContacts.sort(Comparator.comparing(personalInfo::getName));
+
+            // Group by first letter of surname or Pinyin
+            Map<String, List<personalInfo>> groupedContacts = new TreeMap<>();
+            for (personalInfo contact : filteredContacts) {
+                String name = contact.getName();
+                String pinyin = contact.getFullPinyin();
+                // Get the first letter of the surname or Pinyin
+                String firstLetter = getFirstLetter(name, pinyin);
+                groupedContacts.computeIfAbsent(firstLetter, k -> new ArrayList<>()).add(contact);
+            }
+
+            // Add grouped contacts to the list model
+            for (Map.Entry<String, List<personalInfo>> entry : groupedContacts.entrySet()) {
+                String letter = entry.getKey();
+                filteredModel.addElement("---- " + letter + " ----");
+                for (personalInfo contact : entry.getValue()) {
+                    filteredModel.addElement(contact.getName());
+                }
+            }
+
+            contactList.setModel(filteredModel);
+
+            String message = String.format("找到 %d 个匹配的联系人", filteredContacts.size());
+            JOptionPane.showMessageDialog(this, message);
+        } catch (IOException ex) {
+            JOptionPane.showMessageDialog(this,
+                    "搜索联系人失败: " + ex.getMessage(),
+                    "错误",
+                    JOptionPane.ERROR_MESSAGE);
             contactList.setModel(contactListModel);
         }
+    }
+
+    private String getFirstLetter(String name, String pinyin) {
+        if (name == null || name.isEmpty()) {
+            return "未知";
+        }
+
+        // Assume the first character is the surname for Chinese names
+        String surname = name.substring(0, 1);
+        String firstLetter;
+
+        // If the surname is a Chinese character, use its Pinyin
+        if (isChineseCharacter(surname.charAt(0))) {
+            // Extract the Pinyin for the surname
+            String surnamePinyin = PinyinUtils.getFullPinyin(surname);
+            firstLetter = surnamePinyin.isEmpty() ? "未知" : surnamePinyin.substring(0, 1).toUpperCase();
+        } else {
+            // For non-Chinese names, use the first letter of the name
+            firstLetter = name.substring(0, 1).toUpperCase();
+        }
+
+        return firstLetter;
+    }
+
+    // Helper method to check if a character is Chinese
+    private boolean isChineseCharacter(char c) {
+        return c >= '\u4E00' && c <= '\u9FFF';
     }
 
     private String getSelectedContactName() {
